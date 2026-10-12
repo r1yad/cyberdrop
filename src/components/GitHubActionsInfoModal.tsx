@@ -39,11 +39,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
       - name: Install & Build Production Bundle
         run: |
-          npm ci
+          if [ -f package-lock.json ]; then
+            npm ci --legacy-peer-deps || npm install --legacy-peer-deps
+          else
+            npm install --legacy-peer-deps
+          fi
           npm run build
 
       - name: Validate Size (<20MB Constraint)
