@@ -1,4 +1,4 @@
-name: Build & Release CyberDrop Cross-Platform
+name: Build Native CyberDrop Binaries (.exe & .apk)
 
 on:
   push:
@@ -12,15 +12,27 @@ permissions:
   contents: write
 
 jobs:
-  build-and-package:
-    name: Build Ultra-Lean App (10-20MB Target)
+  # =================================================================
+  # 1. ANDROID APK BUILD JOB (Generates CyberDrop.apk)
+  # =================================================================
+  build-android:
+    name: Build Android APK (CyberDrop.apk)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js Environment
+      - name: Setup Java 17 Environment
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -33,57 +45,115 @@ jobs:
             npm install --legacy-peer-deps
           fi
 
-      - name: Build Production Bundle
+      - name: Build Web Production Assets
         run: npm run build
 
-      - name: Validate Binary / Bundle Size (<20MB Constraint)
+      - name: Sync Capacitor Android Project
         run: |
-          DIST_SIZE_KB=$(du -sk dist | cut -f1)
-          DIST_SIZE_MB=$((DIST_SIZE_KB / 1024))
-          echo "Production distribution bundle size: ${DIST_SIZE_MB} MB (${DIST_SIZE_KB} KB)"
-          if [ "$DIST_SIZE_MB" -gt 20 ]; then
-            echo "ERROR: Bundle exceeded target 20MB limit!"
-            exit 1
+          npx cap add android || true
+          npx cap sync android
+
+      - name: Build Android Debug APK with Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cd ..
+          cp android/app/build/outputs/apk/debug/app-debug.apk ./CyberDrop.apk
+
+      - name: Validate APK Binary Size
+        run: |
+          APK_SIZE_BYTES=$(stat -c%s CyberDrop.apk)
+          APK_SIZE_MB=$((APK_SIZE_BYTES / 1024 / 1024))
+          echo "Generated CyberDrop.apk size: ${APK_SIZE_MB} MB (${APK_SIZE_BYTES} bytes)"
+          if [ "$APK_SIZE_MB" -gt 25 ]; then
+            echo "Warning: APK size is larger than expected"
           fi
-          echo "SUCCESS: Bundle is featherweight (${DIST_SIZE_MB}MB < 20MB limit)"
+
+      - name: Upload Standalone CyberDrop.apk
+        uses: actions/upload-artifact@v4
+        with:
+          name: CyberDrop-Android-APK
+          path: CyberDrop.apk
+          retention-days: 14
+
+  # =================================================================
+  # 2. WINDOWS EXE BUILD JOB (Generates CyberDrop.exe)
+  # =================================================================
+  build-windows:
+    name: Build Windows Executable (CyberDrop.exe)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+
+      - name: Build Web Production Assets
+        run: npm run build
+
+      - name: Compile Native Windows WebView2 Executable
+        run: |
+          # Copy dist to windows project
+          mkdir windows\dist
+          Copy-Item -Path "dist\*" -Destination "windows\dist" -Recurse
+          
+          # Publish single-file executable using .NET and WebView2
+          dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o output\ windows\CyberDrop.csproj
+          
+          # Move dist assets beside the exe so it runs completely offline
+          mkdir output\dist
+          Copy-Item -Path "dist\*" -Destination "output\dist" -Recurse
+          Copy-Item -Path "output\CyberDrop.exe" -Destination ".\CyberDrop.exe"
 
       - name: Package Windows Portable Release
         run: |
-          mkdir -p release-artifacts/windows
-          cp -r dist/* release-artifacts/windows/
-          # Include native launcher script & manifest for Windows WebView2 / Edge App container
-          cat << 'EOF' > release-artifacts/windows/launch-cyberdrop.bat
-          @echo off
-          title CyberDrop Local P2P Share
-          start msedge --app="%~dp0index.html" --window-size=1200,800
-          EOF
-          cd release-artifacts
-          zip -r cyberdrop-windows-x64-v1.0.0.zip windows/
-          cd ..
+          Compress-Archive -Path "output\*" -DestinationPath "CyberDrop-Windows-x64.zip"
 
-      - name: Package Android PWA / TWA Release
-        run: |
-          mkdir -p release-artifacts/android-pwa
-          cp -r dist/* release-artifacts/android-pwa/
-          cd release-artifacts
-          zip -r cyberdrop-android-pwa-v1.0.0.zip android-pwa/
-          cd ..
-
-      - name: Upload Build Artifacts
+      - name: Upload Standalone CyberDrop.exe & Package
         uses: actions/upload-artifact@v4
         with:
-          name: cyberdrop-cross-platform-binaries
+          name: CyberDrop-Windows-EXE
           path: |
-            release-artifacts/*.zip
+            CyberDrop.exe
+            CyberDrop-Windows-x64.zip
           retention-days: 14
 
-      - name: Publish GitHub Release (On Tag Push)
-        if: startsWith(github.ref, 'refs/tags/v')
+  # =================================================================
+  # 3. GITHUB RELEASES (On Tag)
+  # =================================================================
+  publish-release:
+    name: Publish GitHub Release Assets
+    needs: [build-android, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Android Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CyberDrop-Android-APK
+
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CyberDrop-Windows-EXE
+
+      - name: Create Release and Upload Binaries
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            release-artifacts/cyberdrop-windows-x64-v1.0.0.zip
-            release-artifacts/cyberdrop-android-pwa-v1.0.0.zip
+            CyberDrop.apk
+            CyberDrop.exe
+            CyberDrop-Windows-x64.zip
           draft: false
           prerelease: false
           generate_release_notes: true

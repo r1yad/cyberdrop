@@ -17,7 +17,8 @@ import {
   Zap,
   Info,
   CheckCircle2,
-  HardDrive
+  HardDrive,
+  FolderDown
 } from 'lucide-react';
 import {
   ClipboardItem,
@@ -43,6 +44,7 @@ import { TransferHistoryView } from './components/TransferHistoryView';
 import { OfflineClipboardView } from './components/OfflineClipboardView';
 import { PairingModal } from './components/PairingModal';
 import { GitHubActionsInfoModal } from './components/GitHubActionsInfoModal';
+import { RunGuideModal } from './components/RunGuideModal';
 
 type NavTab = 'radar' | 'staging' | 'clipboard' | 'history';
 
@@ -98,6 +100,7 @@ export default function App() {
   // Modals
   const [showPairModal, setShowPairModal] = useState(false);
   const [showGitHubModal, setShowGitHubModal] = useState(false);
+  const [showRunGuideModal, setShowRunGuideModal] = useState(false);
   const [isScanning, setIsScanning] = useState(true);
 
   // Transfer Engine Instance
@@ -378,14 +381,24 @@ export default function App() {
         </nav>
 
         {/* Zone 3: 1 primary action */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowRunGuideModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-xs transition-all shadow-[0_0_15px_rgba(0,240,255,0.35)] whitespace-nowrap shrink-0"
+          >
+            <FolderDown className="w-3.5 h-3.5" />
+            <span>Download & Run (.exe / .apk)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowGitHubModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 text-xs font-semibold text-cyan-300 hover:text-cyan-200 transition-colors shadow-sm whitespace-nowrap shrink-0"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-medium text-slate-300 transition-colors whitespace-nowrap shrink-0"
+            title="View GitHub Actions CI/CD configuration"
           >
-            <Github className="w-3.5 h-3.5" />
-            <span>GitHub CI/CD (10-20MB)</span>
+            <Github className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden lg:inline">CI/CD</span>
           </button>
         </div>
       </header>
@@ -620,6 +633,10 @@ export default function App() {
 
       {showGitHubModal && (
         <GitHubActionsInfoModal onClose={() => setShowGitHubModal(false)} />
+      )}
+
+      {showRunGuideModal && (
+        <RunGuideModal onClose={() => setShowRunGuideModal(false)} />
       )}
     </div>
   );

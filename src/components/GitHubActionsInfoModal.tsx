@@ -18,7 +18,7 @@ interface GitHubActionsInfoModalProps {
 export const GitHubActionsInfoModal: React.FC<GitHubActionsInfoModalProps> = ({ onClose }) => {
   const [copied, setCopied] = useState(false);
 
-  const workflowCode = `name: Build & Release CyberDrop Cross-Platform
+  const workflowCode = `name: Build Native CyberDrop Binaries (.exe & .apk)
 
 on:
   push:
@@ -27,49 +27,41 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-package:
-    name: Build Ultra-Lean App (10-20MB Target)
+  # 1. ANDROID APK (CyberDrop.apk via Capacitor & Gradle)
+  build-android:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: 'temurin', java-version: 17 }
+      - uses: android-actions/setup-android@v3
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --legacy-peer-deps && npm run build
+      - run: |
+          npx cap add android || true
+          npx cap sync android
+          cd android && chmod +x gradlew && ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk ../CyberDrop.apk
+      - uses: actions/upload-artifact@v4
+        with: { name: 'CyberDrop-Android-APK', path: 'CyberDrop.apk' }
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install & Build Production Bundle
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci --legacy-peer-deps || npm install --legacy-peer-deps
-          else
-            npm install --legacy-peer-deps
-          fi
-          npm run build
-
-      - name: Validate Size (<20MB Constraint)
-        run: |
-          DIST_SIZE_KB=$(du -sk dist | cut -f1)
-          DIST_SIZE_MB=$((DIST_SIZE_KB / 1024))
-          echo "Production bundle size: \${DIST_SIZE_MB} MB"
-          if [ "\$DIST_SIZE_MB" -gt 20 ]; then
-            echo "ERROR: Exceeded 20MB limit!"
-            exit 1
-          fi
-
-      - name: Package Windows & Android Artifacts
-        run: |
-          mkdir -p release-artifacts
-          zip -r release-artifacts/cyberdrop-windows-x64-v1.0.0.zip dist/
-          zip -r release-artifacts/cyberdrop-android-pwa-v1.0.0.zip dist/
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: cyberdrop-cross-platform-binaries
-          path: release-artifacts/*.zip`;
+  # 2. WINDOWS EXE (CyberDrop.exe via Native WebView2)
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: npm install --legacy-peer-deps && npm run build
+      - run: |
+          dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o output\\ windows\\CyberDrop.csproj
+          mkdir output\\dist
+          Copy-Item -Path "dist\\*" -Destination "output\\dist" -Recurse
+          Copy-Item -Path "output\\CyberDrop.exe" -Destination ".\\CyberDrop.exe"
+          Compress-Archive -Path "output\\*" -DestinationPath "CyberDrop-Windows-x64.zip"
+      - uses: actions/upload-artifact@v4
+        with: { name: 'CyberDrop-Windows-EXE', path: 'CyberDrop.exe' }`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(workflowCode);
