@@ -1,0 +1,85 @@
+name: Build & Release CyberDrop Cross-Platform
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-package:
+    name: Build Ultra-Lean App (10-20MB Target)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build Production Bundle
+        run: npm run build
+
+      - name: Validate Binary / Bundle Size (<20MB Constraint)
+        run: |
+          DIST_SIZE_KB=$(du -sk dist | cut -f1)
+          DIST_SIZE_MB=$((DIST_SIZE_KB / 1024))
+          echo "Production distribution bundle size: ${DIST_SIZE_MB} MB (${DIST_SIZE_KB} KB)"
+          if [ "$DIST_SIZE_MB" -gt 20 ]; then
+            echo "ERROR: Bundle exceeded target 20MB limit!"
+            exit 1
+          fi
+          echo "SUCCESS: Bundle is featherweight (${DIST_SIZE_MB}MB < 20MB limit)"
+
+      - name: Package Windows Portable Release
+        run: |
+          mkdir -p release-artifacts/windows
+          cp -r dist/* release-artifacts/windows/
+          # Include native launcher script & manifest for Windows WebView2 / Edge App container
+          cat << 'EOF' > release-artifacts/windows/launch-cyberdrop.bat
+          @echo off
+          title CyberDrop Local P2P Share
+          start msedge --app="%~dp0index.html" --window-size=1200,800
+          EOF
+          cd release-artifacts
+          zip -r cyberdrop-windows-x64-v1.0.0.zip windows/
+          cd ..
+
+      - name: Package Android PWA / TWA Release
+        run: |
+          mkdir -p release-artifacts/android-pwa
+          cp -r dist/* release-artifacts/android-pwa/
+          cd release-artifacts
+          zip -r cyberdrop-android-pwa-v1.0.0.zip android-pwa/
+          cd ..
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cyberdrop-cross-platform-binaries
+          path: |
+            release-artifacts/*.zip
+          retention-days: 14
+
+      - name: Publish GitHub Release (On Tag Push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-artifacts/cyberdrop-windows-x64-v1.0.0.zip
+            release-artifacts/cyberdrop-android-pwa-v1.0.0.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
