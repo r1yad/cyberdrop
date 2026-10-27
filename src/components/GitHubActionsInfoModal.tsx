@@ -33,13 +33,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
-        with: { distribution: 'temurin', java-version: 17 }
-      - uses: android-actions/setup-android@v3
+        with: { distribution: 'temurin', java-version: 17, cache: 'gradle' }
+      - run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - run: npm install --legacy-peer-deps && npm run build
       - run: |
-          npx cap add android || true
           npx cap sync android
           cd android && chmod +x gradlew && ./gradlew assembleDebug
           cp app/build/outputs/apk/debug/app-debug.apk ../CyberDrop.apk
