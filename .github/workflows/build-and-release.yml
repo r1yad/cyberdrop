@@ -58,7 +58,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --stacktrace
           cd ..
           cp android/app/build/outputs/apk/debug/app-debug.apk ./CyberDrop.apk
 
@@ -89,10 +89,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Dependencies
         run: |
@@ -103,21 +103,20 @@ jobs:
 
       - name: Compile Native Windows WebView2 Executable
         run: |
-          # Copy dist to windows project
-          mkdir windows\dist
-          Copy-Item -Path "dist\*" -Destination "windows\dist" -Recurse
+          New-Item -ItemType Directory -Force -Path "windows\dist"
+          Copy-Item -Path "dist\*" -Destination "windows\dist" -Recurse -Force
           
           # Publish single-file executable using .NET and WebView2
           dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o output\ windows\CyberDrop.csproj
           
-          # Move dist assets beside the exe so it runs completely offline
-          mkdir output\dist
-          Copy-Item -Path "dist\*" -Destination "output\dist" -Recurse
-          Copy-Item -Path "output\CyberDrop.exe" -Destination ".\CyberDrop.exe"
+          # Place dist assets alongside exe
+          New-Item -ItemType Directory -Force -Path "output\dist"
+          Copy-Item -Path "dist\*" -Destination "output\dist" -Recurse -Force
+          Copy-Item -Path "output\CyberDrop.exe" -Destination ".\CyberDrop.exe" -Force
 
       - name: Package Windows Portable Release
         run: |
-          Compress-Archive -Path "output\*" -DestinationPath "CyberDrop-Windows-x64.zip"
+          Compress-Archive -Path "output\*" -DestinationPath "CyberDrop-Windows-x64.zip" -Force
 
       - name: Upload Standalone CyberDrop.exe & Package
         uses: actions/upload-artifact@v4

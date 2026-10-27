@@ -36,7 +36,7 @@ jobs:
         with: { distribution: 'temurin', java-version: 17, cache: 'gradle' }
       - run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: npm install --legacy-peer-deps && npm run build
       - run: |
           npx cap sync android
@@ -51,7 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        with: { node-version: 22 }
       - run: npm install --legacy-peer-deps && npm run build
       - run: |
           dotnet publish -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o output\\ windows\\CyberDrop.csproj
